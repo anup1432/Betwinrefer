@@ -3,23 +3,60 @@ import { storage } from './storage';
 import { generateUniqueCode } from './image-generator';
 import { User, Referral, UniqueCode, ActivityLog } from '@shared/schema';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8452200336:AAG8pcR8iSZ8d5jAl831n0fyCF4uMHSPsBg';
-const CHANNEL_ID = process.env.CHANNEL_ID || '-1002795297139';
-const WEBSITE_URL = process.env.WEBSITE_URL || 'https://marketbet2-0e.onrender.com/';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8455088649:AAEk6aXpLFQ1e8YDaJFfSMIKAf7GqXuslyw';
+const CHANNEL_ID = process.env.CHANNEL_ID || '-1001962385481';
+const WEBSITE_URL = process.env.WEBSITE_URL || 'https://betwinrefer.onrender.com';
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || '@Yokai_watc';
 
 class TelegramBotService {
   private bot: TelegramBot;
 
   constructor() {
-    const botToken = process.env.BOT_TOKEN || '8452200336:AAG8pcR8iSZ8d5jAl831n0fyCF4uMHSPsBg';
+    const botToken = BOT_TOKEN;
 
     if (!botToken) {
       throw new Error('BOT_TOKEN environment variable is required');
     }
 
-    this.bot = new TelegramBot(botToken, { polling: true });
+    // Detect if running in production (Render deployment)
+    const isProduction = WEBSITE_URL.includes('render.com') || process.env.NODE_ENV === 'production';
+    
+    this.bot = new TelegramBot(botToken);
+    
+    if (isProduction) {
+      this.setupWebhook();
+    } else {
+      // For development, clear any existing webhooks first
+      this.clearWebhookAndStartPolling();
+    }
+    
     this.setupCommands();
+  }
+
+  private async setupWebhook() {
+    try {
+      // Clear any existing webhooks first
+      await this.bot.deleteWebHook();
+      
+      const webhookUrl = `${WEBSITE_URL}/api/webhook`;
+      await this.bot.setWebHook(webhookUrl);
+      console.log('Webhook set successfully to:', webhookUrl);
+    } catch (error) {
+      console.error('Failed to set webhook:', error);
+    }
+  }
+
+  private async clearWebhookAndStartPolling() {
+    try {
+      // Clear webhook and start polling for development
+      await this.bot.deleteWebHook();
+      console.log('Webhook cleared, starting polling for development...');
+      
+      // Start polling after clearing webhook
+      this.bot.startPolling();
+    } catch (error) {
+      console.error('Failed to clear webhook or start polling:', error);
+    }
   }
 
   private setupCommands() {
@@ -548,6 +585,14 @@ Use /balance to withdraw your earnings and get your unique code!`;
 
   public getBot(): TelegramBot {
     return this.bot;
+  }
+
+  public processWebhookUpdate(update: any) {
+    try {
+      this.bot.processUpdate(update);
+    } catch (error) {
+      console.error('Error processing webhook update:', error);
+    }
   }
 }
 
