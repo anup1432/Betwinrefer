@@ -7,6 +7,17 @@ import express from "express";
 import path from "path";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Telegram webhook endpoint
+  app.post('/api/webhook', express.json(), (req, res) => {
+    try {
+      telegramBot.processWebhookUpdate(req.body);
+      res.sendStatus(200);
+    } catch (error) {
+      console.error('Webhook error:', error);
+      res.sendStatus(500);
+    }
+  });
+
   // Serve uploaded images
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
