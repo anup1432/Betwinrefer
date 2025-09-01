@@ -1,154 +1,179 @@
-import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 
-export const users: any = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  telegramId: varchar("telegram_id").notNull().unique(),
-  username: text("username"),
-  firstName: text("first_name"),
-  lastName: text("last_name"),
-  balance: decimal("balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
-  totalReferrals: integer("total_referrals").notNull().default(0),
-  hasPlayedOnce: boolean("has_played_once").notNull().default(false),
-  isBlocked: boolean("is_blocked").notNull().default(false),
-  referredBy: varchar("referred_by").references(() => users.id),
-  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+import mongoose, { Schema, Document } from 'mongoose';
+import { z } from 'zod';
+
+// User Schema
+export interface IUser extends Document {
+  id: string;
+  telegramId: string;
+  firstName: string;
+  lastName?: string;
+  username?: string;
+  balance: number;
+  totalEarnings: number;
+  referralCount: number;
+  referredBy?: string;
+  isActive: boolean;
+  joinedAt: Date;
+  lastActiveAt: Date;
+}
+
+const userSchema = new Schema<IUser>({
+  telegramId: { type: String, required: true, unique: true },
+  firstName: { type: String, required: true },
+  lastName: String,
+  username: String,
+  balance: { type: Number, default: 0 },
+  totalEarnings: { type: Number, default: 0 },
+  referralCount: { type: Number, default: 0 },
+  referredBy: String,
+  isActive: { type: Boolean, default: true },
+  joinedAt: { type: Date, default: Date.now },
+  lastActiveAt: { type: Date, default: Date.now }
 });
 
-export const referrals = pgTable("referrals", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  referrerId: varchar("referrer_id").notNull().references(() => users.id),
-  referredId: varchar("referred_id").notNull().references(() => users.id),
-  isCompleted: boolean("is_completed").notNull().default(false),
-  rewardPaid: boolean("reward_paid").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
+// Referral Schema
+export interface IReferral extends Document {
+  id: string;
+  referrerId: string;
+  referredId: string;
+  reward: number;
+  status: 'pending' | 'completed';
+  completedAt?: Date;
+  createdAt: Date;
+}
+
+const referralSchema = new Schema<IReferral>({
+  referrerId: { type: String, required: true },
+  referredId: { type: String, required: true },
+  reward: { type: Number, required: true },
+  status: { type: String, enum: ['pending', 'completed'], default: 'pending' },
+  completedAt: Date,
+  createdAt: { type: Date, default: Date.now }
 });
 
-export const withdrawals = pgTable("withdrawals", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status").notNull().default("pending"), // pending, approved, rejected
-  paymentMethod: text("payment_method").notNull(),
-  paymentDetails: jsonb("payment_details"),
-  requestedAt: timestamp("requested_at").notNull().defaultNow(),
-  processedAt: timestamp("processed_at"),
-  notes: text("notes"),
+// Withdrawal Schema
+export interface IWithdrawal extends Document {
+  id: string;
+  userId: string;
+  amount: number;
+  method: string;
+  details: any;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: Date;
+  processedAt?: Date;
+  adminNotes?: string;
+}
+
+const withdrawalSchema = new Schema<IWithdrawal>({
+  userId: { type: String, required: true },
+  amount: { type: Number, required: true },
+  method: { type: String, required: true },
+  details: Schema.Types.Mixed,
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  requestedAt: { type: Date, default: Date.now },
+  processedAt: Date,
+  adminNotes: String
 });
 
-export const uniqueCodes = pgTable("unique_codes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  code: varchar("code", { length: 14 }).notNull().unique(),
-  imageUrl: text("image_url"),
-  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+// Unique Code Schema
+export interface IUniqueCode extends Document {
+  id: string;
+  userId: string;
+  code: string;
+  imageUrl: string;
+  isUsed: boolean;
+  usedBy?: string;
+  usedAt?: Date;
+  createdAt: Date;
+}
+
+const uniqueCodeSchema = new Schema<IUniqueCode>({
+  userId: { type: String, required: true },
+  code: { type: String, required: true, unique: true },
+  imageUrl: { type: String, required: true },
+  isUsed: { type: Boolean, default: false },
+  usedBy: String,
+  usedAt: Date,
+  createdAt: { type: Date, default: Date.now }
 });
 
-export const botSettings = pgTable("bot_settings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  welcomeMessage: text("welcome_message").notNull(),
-  welcomePhotoUrl: text("welcome_photo_url"),
-  playButtonUrl: text("play_button_url").notNull(),
-  newUserBonus: decimal("new_user_bonus", { precision: 10, scale: 2 }).notNull().default("1.00"),
-  referralReward: decimal("referral_reward", { precision: 10, scale: 2 }).notNull().default("0.10"),
-  minWithdrawal: decimal("min_withdrawal", { precision: 10, scale: 2 }).notNull().default("1.00"),
-  referralsForCode: integer("referrals_for_code").notNull().default(10),
-  isActive: boolean("is_active").notNull().default(true),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+// Bot Settings Schema
+export interface IBotSettings extends Document {
+  id: string;
+  welcomeMessage: string;
+  welcomePhotoUrl?: string;
+  playButtonUrl: string;
+  newUserBonus: number;
+  referralReward: number;
+  minWithdrawal: number;
+  referralsForCode: number;
+  isActive: boolean;
+  updatedAt: Date;
+}
+
+const botSettingsSchema = new Schema<IBotSettings>({
+  welcomeMessage: { type: String, required: true },
+  welcomePhotoUrl: String,
+  playButtonUrl: { type: String, required: true },
+  newUserBonus: { type: Number, default: 1.00 },
+  referralReward: { type: Number, default: 0.10 },
+  minWithdrawal: { type: Number, default: 1.00 },
+  referralsForCode: { type: Number, default: 10 },
+  isActive: { type: Boolean, default: true },
+  updatedAt: { type: Date, default: Date.now }
 });
 
-export const activityLog = pgTable("activity_log", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  type: varchar("type").notNull(), // new_user, referral_complete, withdrawal_request, code_generated
-  userId: varchar("user_id").references(() => users.id),
-  data: jsonb("data"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+// Activity Log Schema
+export interface IActivityLog extends Document {
+  id: string;
+  type: string;
+  userId?: string;
+  data?: any;
+  createdAt: Date;
+}
+
+const activityLogSchema = new Schema<IActivityLog>({
+  type: { type: String, required: true },
+  userId: String,
+  data: Schema.Types.Mixed,
+  createdAt: { type: Date, default: Date.now }
 });
 
-// Relations
-export const usersRelations = relations(users, ({ many, one }) => ({
-  referralsMade: many(referrals, { relationName: "referrer" }),
-  referralsReceived: many(referrals, { relationName: "referred" }),
-  withdrawals: many(withdrawals),
-  uniqueCodes: many(uniqueCodes),
-  referrer: one(users, {
-    fields: [users.referredBy],
-    references: [users.id],
-  }),
-}));
+// Export models
+export const User = mongoose.model<IUser>('User', userSchema);
+export const Referral = mongoose.model<IReferral>('Referral', referralSchema);
+export const Withdrawal = mongoose.model<IWithdrawal>('Withdrawal', withdrawalSchema);
+export const UniqueCode = mongoose.model<IUniqueCode>('UniqueCode', uniqueCodeSchema);
+export const BotSettings = mongoose.model<IBotSettings>('BotSettings', botSettingsSchema);
+export const ActivityLog = mongoose.model<IActivityLog>('ActivityLog', activityLogSchema);
 
-export const referralsRelations = relations(referrals, ({ one }) => ({
-  referrer: one(users, {
-    fields: [referrals.referrerId],
-    references: [users.id],
-    relationName: "referrer",
-  }),
-  referred: one(users, {
-    fields: [referrals.referredId],
-    references: [users.id],
-    relationName: "referred",
-  }),
-}));
-
-export const withdrawalsRelations = relations(withdrawals, ({ one }) => ({
-  user: one(users, {
-    fields: [withdrawals.userId],
-    references: [users.id],
-  }),
-}));
-
-export const uniqueCodesRelations = relations(uniqueCodes, ({ one }) => ({
-  user: one(users, {
-    fields: [uniqueCodes.userId],
-    references: [users.id],
-  }),
-}));
-
-export const activityLogRelations = relations(activityLog, ({ one }) => ({
-  user: one(users, {
-    fields: [activityLog.userId],
-    references: [users.id],
-  }),
-}));
-
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  balance: true,
-  totalReferrals: true,
-  hasPlayedOnce: true,
-  isBlocked: true,
-  joinedAt: true,
+// Zod validation schemas
+export const insertWithdrawalSchema = z.object({
+  userId: z.string(),
+  amount: z.number().positive(),
+  method: z.string(),
+  details: z.any(),
+  paymentMethod: z.string().optional()
 });
 
-export const insertWithdrawalSchema = createInsertSchema(withdrawals).omit({
-  id: true,
-  status: true,
-  requestedAt: true,
-  processedAt: true,
+export const insertBotSettingsSchema = z.object({
+  welcomeMessage: z.string(),
+  welcomePhotoUrl: z.string().optional(),
+  playButtonUrl: z.string(),
+  newUserBonus: z.number().default(1.00),
+  referralReward: z.number().default(0.10),
+  minWithdrawal: z.number().default(1.00),
+  referralsForCode: z.number().default(10),
+  isActive: z.boolean().default(true)
 });
 
-export const insertBotSettingsSchema = createInsertSchema(botSettings).omit({
-  id: true,
-  updatedAt: true,
-});
-
-export const insertActivityLogSchema = createInsertSchema(activityLog).omit({
-  id: true,
-  createdAt: true,
-});
-
-// Types
-export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type Referral = typeof referrals.$inferSelect;
-export type Withdrawal = typeof withdrawals.$inferSelect;
-export type InsertWithdrawal = z.infer<typeof insertWithdrawalSchema>;
-export type UniqueCode = typeof uniqueCodes.$inferSelect;
-export type BotSettings = typeof botSettings.$inferSelect;
-export type InsertBotSettings = z.infer<typeof insertBotSettingsSchema>;
-export type ActivityLog = typeof activityLog.$inferSelect;
-export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+// Export types for compatibility
+export type {
+  IUser as User,
+  IReferral as Referral,
+  IWithdrawal as Withdrawal,
+  IUniqueCode as UniqueCode,
+  IBotSettings as BotSettings,
+  IActivityLog as ActivityLog
+};
