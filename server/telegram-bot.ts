@@ -3,8 +3,8 @@ import { storage } from './storage';
 import { generateUniqueCode } from './image-generator';
 import { User, Referral, UniqueCode, ActivityLog } from '@shared/schema';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8455088649:AAEk6aXpLFQ1e8YDaJFfSMIKAf7GqXuslyw';
-const CHANNEL_ID = process.env.CHANNEL_ID || '-1001962385481';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8452200336:AAG8pcR8iSZ8d5jAl831n0fyCF4uMHSPsBg';
+const CHANNEL_ID = process.env.CHANNEL_ID || '-1002795297139';
 const WEBSITE_URL = process.env.WEBSITE_URL || 'https://marketbet2-0e.onrender.com/';
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || '@Yokai_watc';
 
@@ -12,7 +12,7 @@ class TelegramBotService {
   private bot: TelegramBot;
 
   constructor() {
-    const botToken = process.env.BOT_TOKEN || '8455088649:AAEk6aXpLFQ1e8YDaJFfSMIKAf7GqXuslyw';
+    const botToken = process.env.BOT_TOKEN || '8452200336:AAG8pcR8iSZ8d5jAl831n0fyCF4uMHSPsBg';
 
     if (!botToken) {
       throw new Error('BOT_TOKEN environment variable is required');
