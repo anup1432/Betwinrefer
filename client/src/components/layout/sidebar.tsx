@@ -36,13 +36,13 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-      
+
       <nav className="p-4 space-y-2">
         {navigation.map((item) => {
           const isActive = location === item.href;
           return (
             <Link key={item.name} href={item.href}>
-              <a
+              <div
                 className={cn(
                   "flex items-center space-x-3 px-3 py-2 rounded-md transition-colors",
                   isActive
@@ -53,12 +53,12 @@ export function Sidebar() {
               >
                 <item.icon className="w-5 h-5" />
                 <span className="font-medium">{item.name}</span>
-              </a>
+              </div>
             </Link>
           );
         })}
       </nav>
-      
+
       <div className="absolute bottom-4 left-4 right-4">
         <div className="bg-muted rounded-lg p-3">
           <div className="flex items-center space-x-2 text-sm">
