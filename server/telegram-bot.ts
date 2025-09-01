@@ -12,7 +12,13 @@ class TelegramBotService {
   private bot: TelegramBot;
 
   constructor() {
-    this.bot = new TelegramBot(BOT_TOKEN, { polling: true });
+    const botToken = process.env.BOT_TOKEN || '7924941046:AAEPz7QI7AqA9iG4jZ-9LdQAhLNglgCT-PQ';
+
+    if (!botToken) {
+      throw new Error('BOT_TOKEN environment variable is required');
+    }
+
+    this.bot = new TelegramBot(botToken, { polling: true });
     this.setupCommands();
   }
 
@@ -21,7 +27,7 @@ class TelegramBotService {
     this.bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
       const chatId = msg.chat.id;
       const referralCode = match?.[1];
-      
+
       try {
         await this.handleStart(chatId, msg.from!, referralCode);
       } catch (error) {
@@ -33,7 +39,7 @@ class TelegramBotService {
     // Refer command
     this.bot.onText(/\/refer/, async (msg) => {
       const chatId = msg.chat.id;
-      
+
       try {
         await this.handleRefer(chatId, msg.from!);
       } catch (error) {
@@ -45,7 +51,7 @@ class TelegramBotService {
     // History command
     this.bot.onText(/\/history/, async (msg) => {
       const chatId = msg.chat.id;
-      
+
       try {
         await this.handleHistory(chatId, msg.from!);
       } catch (error) {
@@ -57,7 +63,7 @@ class TelegramBotService {
     // Balance command
     this.bot.onText(/\/balance/, async (msg) => {
       const chatId = msg.chat.id;
-      
+
       try {
         await this.handleBalance(chatId, msg.from!);
       } catch (error) {
@@ -69,7 +75,7 @@ class TelegramBotService {
     // Support command
     this.bot.onText(/\/support/, async (msg) => {
       const chatId = msg.chat.id;
-      
+
       const supportMessage = `🆘 Support Contact
 
 For any issues or questions, please contact our support team:
@@ -77,38 +83,52 @@ For any issues or questions, please contact our support team:
 👤 Support: ${SUPPORT_USERNAME}
 
 We'll get back to you as soon as possible!`;
-      
+
       await this.bot.sendMessage(chatId, supportMessage);
     });
 
     // Handle callback queries (button clicks)
-    this.bot.on('callback_query', async (callbackQuery) => {
-      const chatId = callbackQuery.message!.chat.id;
-      const data = callbackQuery.data;
-      
-      try {
-        if (data === 'play_game') {
-          await this.handlePlayButton(chatId, callbackQuery.from);
-        } else if (data === 'refer') {
-          await this.handleRefer(chatId, callbackQuery.from);
-        } else if (data === 'withdraw') {
-          await this.handleWithdraw(chatId, callbackQuery.from);
-        }
-        
-        await this.bot.answerCallbackQuery(callbackQuery.id);
-      } catch (error) {
-        console.error('Error in callback query:', error);
-        await this.bot.answerCallbackQuery(callbackQuery.id, { text: 'Something went wrong. Please try again.' });
-      }
+    this.bot.on('message', (msg) => {
+      this.handleMessage(msg);
     });
+
+    this.bot.on('callback_query', (query) => {
+      this.handleCallbackQuery(query);
+    });
+  }
+
+  private async handleCallbackQuery(query: TelegramBot.CallbackQuery) {
+    const chatId = query.message?.chat.id;
+    const user = query.from;
+    const data = query.data;
+
+    if (!chatId || !user || !data) return;
+
+    try {
+      await this.bot.answerCallbackQuery(query.id);
+
+      if (data === 'play_game') {
+        await this.handlePlayButton(chatId, user);
+      } else if (data === 'refer') {
+        await this.handleRefer(chatId, user);
+      } else if (data === 'withdraw') {
+        await this.handleWithdraw(chatId, user);
+      } else if (data.startsWith('withdraw_')) {
+        const method = data.replace('withdraw_', '');
+        await this.handleWithdrawPayment(chatId, user, method);
+      }
+    } catch (error) {
+      console.error('Error handling callback query:', error);
+      await this.bot.answerCallbackQuery(query.id, { text: 'Something went wrong. Please try again.' });
+    }
   }
 
   private async handleStart(chatId: number, user: TelegramBot.User, referralCode?: string) {
     const telegramId = user.id.toString();
-    
+
     // Check if user exists
     let existingUser = await storage.getUserByTelegramId(telegramId);
-    
+
     if (!existingUser) {
       // Create new user
       const referrerId = referralCode ? await this.getReferrerIdFromCode(referralCode) : null;
@@ -122,7 +142,7 @@ We'll get back to you as soon as possible!`;
 
       // Award new user bonus
       await storage.updateUserBalance(newUser.id, '1.00');
-      
+
       // Log new user activity
       await storage.logActivity({
         type: 'new_user',
@@ -146,7 +166,7 @@ We'll get back to you as soon as possible!`;
 
     // Get bot settings
     const settings = await storage.getBotSettings();
-    
+
     // Send welcome message with photo and play button
     const welcomeMessage = `🎉 Welcome to our referral bot!
 
@@ -180,7 +200,7 @@ Use the buttons below to get started!`;
   private async handlePlayButton(chatId: number, user: TelegramBot.User) {
     const telegramId = user.id.toString();
     const existingUser = await storage.getUserByTelegramId(telegramId);
-    
+
     if (!existingUser) {
       await this.bot.sendMessage(chatId, 'Please start the bot first with /start');
       return;
@@ -214,14 +234,14 @@ Use the buttons below to get started!`;
   private async handleRefer(chatId: number, user: TelegramBot.User) {
     const telegramId = user.id.toString();
     const existingUser = await storage.getUserByTelegramId(telegramId);
-    
+
     if (!existingUser) {
       await this.bot.sendMessage(chatId, 'Please start the bot first with /start');
       return;
     }
 
     const referralLink = `https://t.me/${await this.getBotUsername()}?start=${existingUser.id}`;
-    
+
     const message = `👥 Your Referral Link
 
 🔗 ${referralLink}
@@ -242,7 +262,7 @@ Use the buttons below to get started!`;
   private async handleHistory(chatId: number, user: TelegramBot.User) {
     const telegramId = user.id.toString();
     const existingUser = await storage.getUserByTelegramId(telegramId);
-    
+
     if (!existingUser) {
       await this.bot.sendMessage(chatId, 'Please start the bot first with /start');
       return;
@@ -296,7 +316,7 @@ Use the buttons below to get started!`;
   private async handleBalance(chatId: number, user: TelegramBot.User) {
     const telegramId = user.id.toString();
     const existingUser = await storage.getUserByTelegramId(telegramId);
-    
+
     if (!existingUser) {
       await this.bot.sendMessage(chatId, 'Please start the bot first with /start');
       return;
@@ -314,7 +334,7 @@ Total Referrals: ${existingUser.totalReferrals}/10
 
     if (canWithdraw) {
       message += `✅ You can withdraw your earnings!`;
-      
+
       const keyboard = {
         inline_keyboard: [[
           { text: '💸 Withdraw', callback_data: 'withdraw' }
@@ -327,7 +347,7 @@ Total Referrals: ${existingUser.totalReferrals}/10
 Need: $${(1.00 - balance).toFixed(2)} more
 
 Keep referring friends to reach the minimum!`;
-      
+
       await this.bot.sendMessage(chatId, message);
     }
   }
@@ -335,14 +355,14 @@ Keep referring friends to reach the minimum!`;
   private async handleWithdraw(chatId: number, user: TelegramBot.User) {
     const telegramId = user.id.toString();
     const existingUser = await storage.getUserByTelegramId(telegramId);
-    
+
     if (!existingUser) {
       await this.bot.sendMessage(chatId, 'Please start the bot first with /start');
       return;
     }
 
     const balance = parseFloat(existingUser.balance);
-    
+
     if (balance < 1.00) {
       await this.bot.sendMessage(chatId, `❌ Insufficient balance for withdrawal.
 
@@ -354,9 +374,36 @@ Keep referring friends to earn more!`);
       return;
     }
 
+    // Offer withdrawal methods
+    const message = `💸 Please choose a withdrawal method:
+
+Current Balance: $${existingUser.balance}`;
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: '💳 Bank Transfer', callback_data: 'withdraw_bank' }],
+        [{ text: '💰 Crypto', callback_data: 'withdraw_crypto' }],
+        [{ text: '📞 Other', callback_data: 'withdraw_other' }],
+      ]
+    };
+
+    await this.bot.sendMessage(chatId, message, { reply_markup: keyboard });
+  }
+
+  private async handleWithdrawPayment(chatId: number, user: TelegramBot.User, method: string) {
+    const telegramId = user.id.toString();
+    const existingUser = await storage.getUserByTelegramId(telegramId);
+
+    if (!existingUser) {
+      await this.bot.sendMessage(chatId, 'Please start the bot first with /start');
+      return;
+    }
+
+    const balance = parseFloat(existingUser.balance);
+
     // Generate unique 14-digit code
     const uniqueCode = this.generateUniqueCode();
-    
+
     // Save code to database
     await storage.createUniqueCode({
       userId: existingUser.id,
@@ -366,13 +413,14 @@ Keep referring friends to earn more!`);
     // Deduct balance
     await storage.updateUserBalance(existingUser.id, `-${balance.toFixed(2)}`);
 
-    // Send success message with code
-    const successMessage = `🎉 Withdrawal Successful!
+    // Send success message with code and method
+    const successMessage = `🎉 Withdrawal Request Processed!
 
 💎 Your Unique 14-Digit Code:
 ${uniqueCode}
 
 💰 Amount Withdrawn: $${balance.toFixed(2)}
+💳 Withdrawal Method: ${method.charAt(0).toUpperCase() + method.slice(1)}
 💳 Your new balance: $0.00
 
 Keep this code safe! You can check all your codes with /history command.`;
@@ -380,13 +428,13 @@ Keep this code safe! You can check all your codes with /history command.`;
     await this.bot.sendMessage(chatId, successMessage);
 
     // Send notification to channel
-    await this.notifyChannel(`💸 Withdrawal processed: @${existingUser.username || existingUser.firstName} withdrew $${balance.toFixed(2)} and received code: ${uniqueCode}`);
+    await this.notifyChannel(`💸 Withdrawal processed: @${existingUser.username || existingUser.firstName} withdrew $${balance.toFixed(2)} via ${method} and received code: ${uniqueCode}`);
 
     // Log activity
     await storage.logActivity({
       type: 'code_generated',
       userId: existingUser.id,
-      data: { code: uniqueCode, amount: balance.toFixed(2) }
+      data: { code: uniqueCode, amount: balance.toFixed(2), method: method }
     });
   }
 
@@ -394,11 +442,11 @@ Keep this code safe! You can check all your codes with /history command.`;
     // Generate 14-character mixed code with 5-6 numbers and rest alphabets
     const numbers = '0123456789';
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    
+
     let code = '';
     let numberCount = 0;
     const targetNumbers = Math.floor(Math.random() * 2) + 5; // 5 or 6 numbers
-    
+
     for (let i = 0; i < 14; i++) {
       if (numberCount < targetNumbers && (Math.random() < 0.4 || (14 - i) <= (targetNumbers - numberCount))) {
         // Add number
@@ -409,21 +457,21 @@ Keep this code safe! You can check all your codes with /history command.`;
         code += letters[Math.floor(Math.random() * letters.length)];
       }
     }
-    
+
     return code;
   }
 
   private async completeReferral(referrerId: string, referredId: string) {
     // Update referral as completed
     await storage.completeReferral(referrerId, referredId);
-    
+
     // Update referrer's total referrals
     const referrer = await storage.getUser(referrerId);
     if (!referrer) return;
 
     const newReferralCount = referrer.totalReferrals + 1;
     await storage.updateUserReferrals(referrerId, newReferralCount);
-    
+
     // Award referral reward
     const settings = await storage.getBotSettings();
     const reward = settings?.referralReward || '0.10';
@@ -467,12 +515,26 @@ Use /balance to withdraw your earnings and get your unique code!`;
   }
 
   private async getBotUsername(): Promise<string> {
+    const botInfo = await this.bot.getMe();
+    return botInfo.username || 'unknown_bot';
+  }
+
+  async sendBroadcast(message: string): Promise<void> {
     try {
-      const me = await this.bot.getMe();
-      return me.username || 'bot';
+      const users = await storage.getAllUsers();
+      const activeUsers = users.filter(user => user.isActive);
+
+      for (const user of activeUsers) {
+        try {
+          await this.bot.sendMessage(parseInt(user.telegramId), message);
+          await new Promise(resolve => setTimeout(resolve, 50)); // Rate limiting
+        } catch (error) {
+          console.error(`Failed to send message to user ${user.telegramId}:`, error);
+        }
+      }
     } catch (error) {
-      console.error('Failed to get bot username:', error);
-      return 'bot';
+      console.error('Error sending broadcast:', error);
+      throw error;
     }
   }
 
@@ -481,19 +543,6 @@ Use /balance to withdraw your earnings and get your unique code!`;
       await this.bot.sendMessage(CHANNEL_ID, message);
     } catch (error) {
       console.error('Failed to send channel notification:', error);
-    }
-  }
-
-  public async sendBroadcast(message: string): Promise<void> {
-    const users = await storage.getAllUsers();
-    
-    for (const user of users) {
-      try {
-        await this.bot.sendMessage(parseInt(user.telegramId), message, { parse_mode: 'Markdown' });
-        await new Promise(resolve => setTimeout(resolve, 100)); // Rate limiting
-      } catch (error) {
-        console.error(`Failed to send broadcast to ${user.telegramId}:`, error);
-      }
     }
   }
 
