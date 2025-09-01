@@ -1,8 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { storage } from './storage';
 import { generateUniqueCode } from './image-generator';
-import { eq, and } from 'drizzle-orm';
-import { users, referrals, uniqueCodes, activityLog } from '@shared/schema';
+import { User, Referral, UniqueCode, ActivityLog } from '@shared/schema';
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '8455088649:AAEk6aXpLFQ1e8YDaJFfSMIKAf7GqXuslyw';
 const CHANNEL_ID = process.env.CHANNEL_ID || '-1001962385481';
