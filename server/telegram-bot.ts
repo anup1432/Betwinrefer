@@ -12,7 +12,7 @@ class TelegramBotService {
   private bot: TelegramBot;
 
   constructor() {
-    const botToken = process.env.BOT_TOKEN || '7924941046:AAEPz7QI7AqA9iG4jZ-9LdQAhLNglgCT-PQ';
+    const botToken = process.env.BOT_TOKEN || '8455088649:AAEk6aXpLFQ1e8YDaJFfSMIKAf7GqXuslyw';
 
     if (!botToken) {
       throw new Error('BOT_TOKEN environment variable is required');
