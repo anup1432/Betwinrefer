@@ -141,5 +141,79 @@ export const storage = {
 
   async getUserReferrals(userId: string): Promise<IReferral[]> {
     return await Referral.find({ referrerId: userId });
+  },
+
+  async getUserWithdrawals(userId: string): Promise<IWithdrawal[]> {
+    return await Withdrawal.find({ userId }).sort({ requestedAt: -1 });
+  },
+
+  async getUserCodes(userId: string): Promise<IUniqueCode[]> {
+    return await UniqueCode.find({ userId }).sort({ createdAt: -1 });
+  },
+
+  async createWithdrawal(withdrawalData: any): Promise<IWithdrawal> {
+    const withdrawal = new Withdrawal({
+      userId: withdrawalData.userId,
+      amount: withdrawalData.amount,
+      method: withdrawalData.method,
+      details: withdrawalData.details,
+      paymentMethod: withdrawalData.paymentMethod || withdrawalData.method,
+      status: 'pending'
+    });
+    return await withdrawal.save();
+  },
+
+  async getAllWithdrawals(): Promise<IWithdrawal[]> {
+    return await Withdrawal.find()
+      .sort({ requestedAt: -1 })
+      .populate('userId', 'firstName lastName username telegramId');
+  },
+
+  async updateWithdrawalStatus(withdrawalId: string, status: string, notes?: string): Promise<void> {
+    await Withdrawal.findByIdAndUpdate(withdrawalId, {
+      status,
+      adminNotes: notes,
+      processedAt: new Date()
+    });
+  },
+
+  async getBotSettings(): Promise<IBotSettings | null> {
+    let settings = await BotSettings.findOne();
+    if (!settings) {
+      settings = new BotSettings({
+        welcomeMessage: "Welcome to our referral bot! 🎉",
+        playButtonUrl: "https://example.com/play",
+        newUserBonus: 1.00,
+        referralReward: 0.10,
+        minWithdrawal: 1.00,
+        referralsForCode: 10,
+        isActive: true
+      });
+      await settings.save();
+    }
+    return settings;
+  },
+
+  async updateBotSettings(updates: any): Promise<IBotSettings> {
+    let settings = await BotSettings.findOne();
+    if (!settings) {
+      settings = new BotSettings(updates);
+    } else {
+      Object.assign(settings, updates);
+      settings.updatedAt = new Date();
+    }
+    return await settings.save();
+  },
+
+  async logActivity(activityData: Partial<IActivityLog>): Promise<IActivityLog> {
+    const activity = new ActivityLog(activityData);
+    return await activity.save();
+  },
+
+  async getRecentActivity(): Promise<IActivityLog[]> {
+    return await ActivityLog.find()
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('userId', 'firstName lastName username telegramId');
   }
 };
