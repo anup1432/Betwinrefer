@@ -4,7 +4,7 @@ import { generateUniqueCode } from './image-generator';
 import { eq, and } from 'drizzle-orm';
 import { users, referrals, uniqueCodes, activityLog } from '@shared/schema';
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8452200336:AAG8pcR8iSZ8d5jAl831n0fyCF4uMHSPsBg';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8455088649:AAEk6aXpLFQ1e8YDaJFfSMIKAf7GqXuslyw';
 const CHANNEL_ID = process.env.CHANNEL_ID || '-1001962385481';
 const WEBSITE_URL = process.env.WEBSITE_URL || 'https://marketbet2-0e.onrender.com/';
 const SUPPORT_USERNAME = process.env.SUPPORT_USERNAME || '@Yokai_watc';
