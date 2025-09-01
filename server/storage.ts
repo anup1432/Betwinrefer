@@ -1,302 +1,145 @@
-import { 
-  users, 
-  referrals, 
-  withdrawals, 
-  uniqueCodes, 
-  botSettings, 
-  activityLog,
-  type User, 
-  type InsertUser,
-  type Referral,
-  type Withdrawal,
-  type InsertWithdrawal,
-  type UniqueCode,
-  type BotSettings,
-  type InsertBotSettings,
-  type ActivityLog,
-  type InsertActivityLog
-} from "@shared/schema";
-import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { User, Referral, Withdrawal, UniqueCode, BotSettings, ActivityLog } from '@shared/schema';
+import type { IUser, IReferral, IWithdrawal, IUniqueCode, IBotSettings, IActivityLog } from '@shared/schema';
 
-export interface IStorage {
-  // Users
-  getUser(id: string): Promise<User | undefined>;
-  getUserByTelegramId(telegramId: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUserBalance(userId: string, amount: string): Promise<void>;
-  updateUserReferrals(userId: string, count: number): Promise<void>;
-  markUserAsPlayed(userId: string): Promise<void>;
-  getAllUsers(): Promise<User[]>;
-  
-  // Referrals
-  createReferral(referral: { referrerId: string; referredId: string }): Promise<Referral>;
-  completeReferral(referrerId: string, referredId: string): Promise<void>;
-  getUserReferrals(userId: string): Promise<(Referral & { referred?: User })[]>;
-  
-  // Withdrawals
-  createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal>;
-  getUserWithdrawals(userId: string): Promise<Withdrawal[]>;
-  getAllWithdrawals(): Promise<(Withdrawal & { user?: User })[]>;
-  updateWithdrawalStatus(id: string, status: string, notes?: string): Promise<void>;
-  
-  // Unique Codes
-  createUniqueCode(code: { userId: string; code: string; imageUrl?: string }): Promise<UniqueCode>;
-  getUserCodes(userId: string): Promise<UniqueCode[]>;
-  getAllCodes(): Promise<(UniqueCode & { user?: User })[]>;
-  
-  // Bot Settings
-  getBotSettings(): Promise<BotSettings | undefined>;
-  updateBotSettings(settings: InsertBotSettings): Promise<BotSettings>;
-  
-  // Activity Log
-  logActivity(activity: InsertActivityLog): Promise<ActivityLog>;
-  getRecentActivity(): Promise<(ActivityLog & { user?: User })[]>;
-  
-  // Analytics
-  getStats(): Promise<{
-    totalUsers: number;
-    totalReferrals: number;
-    totalEarnings: string;
-    pendingWithdrawals: number;
-  }>;
-}
+export const storage = {
+  // User operations
+  async createUser(userData: Partial<IUser>): Promise<IUser> {
+    const user = new User(userData);
+    return await user.save();
+  },
 
-export class DatabaseStorage implements IStorage {
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user as User | undefined;
-  }
+  async getUserByTelegramId(telegramId: string): Promise<IUser | null> {
+    return await User.findOne({ telegramId });
+  },
 
-  async getUserByTelegramId(telegramId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId));
-    return user as User | undefined;
-  }
+  async getUserById(id: string): Promise<IUser | null> {
+    return await User.findById(id);
+  },
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const result = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
-    return result[0] as User;
-  }
+  async updateUser(id: string, updates: Partial<IUser>): Promise<IUser | null> {
+    return await User.findByIdAndUpdate(id, updates, { new: true });
+  },
 
-  async updateUserBalance(userId: string, amount: string): Promise<void> {
-    await db
-      .update(users)
-      .set({ 
-        balance: sql`${users.balance} + ${amount}` 
-      })
-      .where(eq(users.id, userId));
-  }
+  async getAllUsers(): Promise<IUser[]> {
+    return await User.find().sort({ joinedAt: -1 });
+  },
 
-  async updateUserReferrals(userId: string, count: number): Promise<void> {
-    await db
-      .update(users)
-      .set({ totalReferrals: count })
-      .where(eq(users.id, userId));
-  }
+  async updateUserBalance(userId: string, amount: number): Promise<void> {
+    await User.findByIdAndUpdate(userId, { 
+      $inc: { balance: amount, totalEarnings: amount > 0 ? amount : 0 }
+    });
+  },
 
-  async markUserAsPlayed(userId: string): Promise<void> {
-    await db
-      .update(users)
-      .set({ hasPlayedOnce: true })
-      .where(eq(users.id, userId));
-  }
+  // Referral operations
+  async createReferral(referralData: Partial<IReferral>): Promise<IReferral> {
+    const referral = new Referral(referralData);
+    return await referral.save();
+  },
 
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users).orderBy(desc(users.joinedAt)) as User[];
-  }
+  async getReferralsByUserId(userId: string): Promise<IReferral[]> {
+    return await Referral.find({ referrerId: userId });
+  },
 
-  async createReferral(referral: { referrerId: string; referredId: string }): Promise<Referral> {
-    const [newReferral] = await db
-      .insert(referrals)
-      .values(referral)
-      .returning();
-    return newReferral;
-  }
+  async updateReferralStatus(id: string, status: 'pending' | 'completed'): Promise<void> {
+    await Referral.findByIdAndUpdate(id, { 
+      status, 
+      completedAt: status === 'completed' ? new Date() : undefined 
+    });
+  },
 
-  async completeReferral(referrerId: string, referredId: string): Promise<void> {
-    await db
-      .update(referrals)
-      .set({ 
-        isCompleted: true, 
-        completedAt: new Date(),
-        rewardPaid: true 
-      })
-      .where(and(
-        eq(referrals.referrerId, referrerId),
-        eq(referrals.referredId, referredId)
-      ));
-  }
+  // Withdrawal operations
+  async createWithdrawal(withdrawalData: Partial<IWithdrawal>): Promise<IWithdrawal> {
+    const withdrawal = new Withdrawal(withdrawalData);
+    return await withdrawal.save();
+  },
 
-  async getUserReferrals(userId: string): Promise<(Referral & { referred?: User })[]> {
-    return await db
-      .select({
-        id: referrals.id,
-        referrerId: referrals.referrerId,
-        referredId: referrals.referredId,
-        isCompleted: referrals.isCompleted,
-        rewardPaid: referrals.rewardPaid,
-        createdAt: referrals.createdAt,
-        completedAt: referrals.completedAt,
-        referred: users
-      })
-      .from(referrals)
-      .leftJoin(users, eq(referrals.referredId, users.id))
-      .where(eq(referrals.referrerId, userId))
-      .orderBy(desc(referrals.createdAt));
-  }
+  async getAllWithdrawals(): Promise<IWithdrawal[]> {
+    return await Withdrawal.find().sort({ requestedAt: -1 });
+  },
 
-  async createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal> {
-    const [newWithdrawal] = await db
-      .insert(withdrawals)
-      .values(withdrawal)
-      .returning();
-    return newWithdrawal;
-  }
+  async updateWithdrawalStatus(id: string, status: 'pending' | 'approved' | 'rejected', adminNotes?: string): Promise<void> {
+    await Withdrawal.findByIdAndUpdate(id, { 
+      status, 
+      processedAt: new Date(),
+      adminNotes 
+    });
+  },
 
-  async getUserWithdrawals(userId: string): Promise<Withdrawal[]> {
-    return await db
-      .select()
-      .from(withdrawals)
-      .where(eq(withdrawals.userId, userId))
-      .orderBy(desc(withdrawals.requestedAt));
-  }
+  // Unique Code operations
+  async createUniqueCode(codeData: Partial<IUniqueCode>): Promise<IUniqueCode> {
+    const uniqueCode = new UniqueCode(codeData);
+    return await uniqueCode.save();
+  },
 
-  async getAllWithdrawals(): Promise<(Withdrawal & { user?: User })[]> {
-    return await db
-      .select({
-        id: withdrawals.id,
-        userId: withdrawals.userId,
-        amount: withdrawals.amount,
-        status: withdrawals.status,
-        paymentMethod: withdrawals.paymentMethod,
-        paymentDetails: withdrawals.paymentDetails,
-        requestedAt: withdrawals.requestedAt,
-        processedAt: withdrawals.processedAt,
-        notes: withdrawals.notes,
-        user: users
-      })
-      .from(withdrawals)
-      .leftJoin(users, eq(withdrawals.userId, users.id))
-      .orderBy(desc(withdrawals.requestedAt));
-  }
+  async getUniqueCodeByCode(code: string): Promise<IUniqueCode | null> {
+    return await UniqueCode.findOne({ code });
+  },
 
-  async updateWithdrawalStatus(id: string, status: string, notes?: string): Promise<void> {
-    await db
-      .update(withdrawals)
-      .set({ 
-        status, 
-        notes,
-        processedAt: new Date() 
-      })
-      .where(eq(withdrawals.id, id));
-  }
+  async markCodeAsUsed(id: string, usedBy: string): Promise<void> {
+    await UniqueCode.findByIdAndUpdate(id, { 
+      isUsed: true, 
+      usedBy, 
+      usedAt: new Date() 
+    });
+  },
 
-  async createUniqueCode(code: { userId: string; code: string; imageUrl?: string }): Promise<UniqueCode> {
-    const [newCode] = await db
-      .insert(uniqueCodes)
-      .values(code)
-      .returning();
-    return newCode;
-  }
+  // Bot Settings operations
+  async getBotSettings(): Promise<IBotSettings | null> {
+    return await BotSettings.findOne();
+  },
 
-  async getUserCodes(userId: string): Promise<UniqueCode[]> {
-    return await db
-      .select()
-      .from(uniqueCodes)
-      .where(eq(uniqueCodes.userId, userId))
-      .orderBy(desc(uniqueCodes.generatedAt));
-  }
+  async updateBotSettings(settings: Partial<IBotSettings>): Promise<IBotSettings | null> {
+    const existingSettings = await BotSettings.findOne();
+    if (existingSettings) {
+      return await BotSettings.findByIdAndUpdate(existingSettings._id, settings, { new: true });
+    } else {
+      const newSettings = new BotSettings(settings);
+      return await newSettings.save();
+    }
+  },
 
-  async getAllCodes(): Promise<(UniqueCode & { user?: User })[]> {
-    return await db
-      .select({
-        id: uniqueCodes.id,
-        userId: uniqueCodes.userId,
-        code: uniqueCodes.code,
-        imageUrl: uniqueCodes.imageUrl,
-        generatedAt: uniqueCodes.generatedAt,
-        user: users
-      })
-      .from(uniqueCodes)
-      .leftJoin(users, eq(uniqueCodes.userId, users.id))
-      .orderBy(desc(uniqueCodes.generatedAt));
-  }
+  // Activity Log operations
+  async logActivity(activityData: Partial<IActivityLog>): Promise<IActivityLog> {
+    const activity = new ActivityLog(activityData);
+    return await activity.save();
+  },
 
-  async getBotSettings(): Promise<BotSettings | undefined> {
-    const [settings] = await db.select().from(botSettings).where(eq(botSettings.isActive, true));
-    return settings || undefined;
-  }
+  async getRecentActivity(limit: number = 50): Promise<IActivityLog[]> {
+    return await ActivityLog.find().sort({ createdAt: -1 }).limit(limit);
+  },
 
-  async updateBotSettings(settings: InsertBotSettings): Promise<BotSettings> {
-    // Deactivate all existing settings
-    await db.update(botSettings).set({ isActive: false });
-    
-    // Insert new settings
-    const [newSettings] = await db
-      .insert(botSettings)
-      .values({ ...settings, isActive: true })
-      .returning();
-    return newSettings;
-  }
-
-  async logActivity(activity: InsertActivityLog): Promise<ActivityLog> {
-    const [newActivity] = await db
-      .insert(activityLog)
-      .values(activity)
-      .returning();
-    return newActivity;
-  }
-
-  async getRecentActivity(): Promise<(ActivityLog & { user?: User })[]> {
-    return await db
-      .select({
-        id: activityLog.id,
-        type: activityLog.type,
-        userId: activityLog.userId,
-        data: activityLog.data,
-        createdAt: activityLog.createdAt,
-        user: users
-      })
-      .from(activityLog)
-      .leftJoin(users, eq(activityLog.userId, users.id))
-      .orderBy(desc(activityLog.createdAt))
-      .limit(50);
-  }
-
-  async getStats(): Promise<{
-    totalUsers: number;
-    totalReferrals: number;
-    totalEarnings: string;
-    pendingWithdrawals: number;
-  }> {
-    const [userCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users);
-
-    const [referralCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(referrals)
-      .where(eq(referrals.isCompleted, true));
-
-    const [earningsSum] = await db
-      .select({ sum: sql<string>`COALESCE(SUM(${users.balance}), 0)` })
-      .from(users);
-
-    const [pendingCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(withdrawals)
-      .where(eq(withdrawals.status, 'pending'));
+  // Dashboard statistics
+  async getDashboardStats() {
+    const totalUsers = await User.countDocuments();
+    const activeUsers = await User.countDocuments({ isActive: true });
+    const totalWithdrawals = await Withdrawal.countDocuments();
+    const pendingWithdrawals = await Withdrawal.countDocuments({ status: 'pending' });
+    const totalReferrals = await Referral.countDocuments();
+    const completedReferrals = await Referral.countDocuments({ status: 'completed' });
 
     return {
-      totalUsers: userCount.count || 0,
-      totalReferrals: referralCount.count || 0,
-      totalEarnings: earningsSum.sum || '0',
-      pendingWithdrawals: pendingCount.count || 0,
+      totalUsers,
+      activeUsers,
+      totalWithdrawals,
+      pendingWithdrawals,
+      totalReferrals,
+      completedReferrals
     };
-  }
-}
+  },
 
-export const storage = new DatabaseStorage();
+  async getStats() {
+    return this.getDashboardStats();
+  },
+
+  async getAllCodes(): Promise<IUniqueCode[]> {
+    return await UniqueCode.find().sort({ createdAt: -1 });
+  },
+
+  async getUser(id: string): Promise<IUser | null> {
+    return await User.findById(id);
+  },
+
+  async getUserReferrals(userId: string): Promise<IReferral[]> {
+    return await Referral.find({ referrerId: userId });
+  }
+};
